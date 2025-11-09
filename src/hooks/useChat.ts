@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
 
 export interface ChatMessage {
   id: string;
@@ -26,17 +25,13 @@ export const useChat = (providerId?: string) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const [user] = useState({ id: 'current-user-id' }); // Replace with your auth
 
-  // Fetch conversations for the current user
   const fetchConversations = async () => {
-    if (!user) return;
-    
     try {
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
-        .or(`customer_id.eq.${user.id},provider_id.eq.${user.id}`)
         .order('last_message_at', { ascending: false });
 
       if (error) throw error;
@@ -46,7 +41,6 @@ export const useChat = (providerId?: string) => {
     }
   };
 
-  // Fetch messages for a specific conversation
   const fetchMessages = async (conversationId: string) => {
     try {
       const { data, error } = await supabase
@@ -64,10 +58,7 @@ export const useChat = (providerId?: string) => {
     }
   };
 
-  // Send a new message
   const sendMessage = async (conversationId: string, message: string, senderType: 'customer' | 'provider') => {
-    if (!user) return;
-
     try {
       const { data, error } = await supabase
         .from('messages')
@@ -84,7 +75,6 @@ export const useChat = (providerId?: string) => {
 
       if (error) throw error;
 
-      // Update conversation last message
       await supabase
         .from('conversations')
         .update({
@@ -100,10 +90,8 @@ export const useChat = (providerId?: string) => {
     }
   };
 
-  // Start a new conversation
   const startConversation = async (customerId: string, customerName: string, providerId: string, providerName: string, initialMessage: string) => {
     try {
-      // Create conversation
       const { data: conversation, error: convError } = await supabase
         .from('conversations')
         .insert([
@@ -120,9 +108,7 @@ export const useChat = (providerId?: string) => {
 
       if (convError) throw convError;
 
-      // Send initial message
       await sendMessage(conversation.id, initialMessage, 'customer');
-
       return conversation;
     } catch (error) {
       console.error('Error starting conversation:', error);
@@ -130,10 +116,7 @@ export const useChat = (providerId?: string) => {
     }
   };
 
-  // Real-time subscription for new messages
   useEffect(() => {
-    if (!user) return;
-
     const subscription = supabase
       .channel('messages')
       .on(
@@ -145,13 +128,9 @@ export const useChat = (providerId?: string) => {
         },
         (payload) => {
           const newMessage = payload.new as ChatMessage;
-          
-          // Check if this message belongs to a conversation the user is part of
           const isRelevant = conversations.some(conv => conv.id === newMessage.conversation_id);
           if (isRelevant) {
             setMessages(prev => [...prev, newMessage]);
-            
-            // Update conversations list with new last message
             setConversations(prev => 
               prev.map(conv => 
                 conv.id === newMessage.conversation_id 
@@ -167,7 +146,7 @@ export const useChat = (providerId?: string) => {
     return () => {
       subscription.unsubscribe();
     };
-  }, [user, conversations]);
+  }, [conversations]);
 
   return {
     conversations,
